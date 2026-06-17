@@ -243,6 +243,7 @@ do
   }
 
   vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagnostic [Q]uickfix list' })
+  vim.keymap.set('n', 'gl', vim.diagnostic.open_float, { desc = 'Show line diagnostics' })
 
   -- Exit terminal mode in the builtin terminal with a shortcut that is a bit easier
   -- for people to discover. Otherwise, you normally need to press <C-\><C-n>, which
@@ -289,6 +290,7 @@ do
   vim.keymap.set('n', '<S-l>', '<cmd>bnext<CR>', { desc = 'Next buffer' })
   vim.keymap.set('n', '<S-h>', '<cmd>bprev<CR>', { desc = 'Previous buffer' })
   vim.keymap.set('n', '<leader>bd', '<cmd>bdelete<CR>', { desc = '[B]uffer [D]elete' })
+  vim.keymap.set('n', '<leader>gg', '<cmd>Neogit<cr>', { desc = 'Show Neogit UI' })
 end
 
 -- ============================================================
@@ -449,8 +451,7 @@ do
   -- any other, such as 'tokyonight-storm', 'tokyonight-moon', or 'tokyonight-day'.
   vim.g.everforest_background = 'medium'
 
-  vim.cmd.colorscheme 'everforest'
-  vim.o.termguicolors = true
+  vim.cmd.colorscheme 'tokyonight'
   -- Highlight todo, notes, etc in comments
   vim.pack.add { gh 'folke/todo-comments.nvim' }
   require('todo-comments').setup { signs = false }
@@ -502,7 +503,7 @@ do
   -- 2. Configure lualine
   require('lualine').setup {
     options = {
-      theme = 'everforest', -- This automatically matches the statusline to your active colorscheme
+      theme = 'auto', -- This automatically matches the statusline to your active colorscheme
       icons_enabled = vim.g.have_nerd_font,
       component_separators = { left = '', right = '' },
       section_separators = { left = '', right = '' },
@@ -520,25 +521,29 @@ do
   -- ============================================================
   do -- [[ Snacks.nvim Finder & Explorer ]] --
     -- 1. Install snacks.nvim
+    -- 1. Install snacks.nvim
     vim.pack.add { 'https://github.com/folke/snacks.nvim' }
 
-    -- 2. Setup snacks.nvim modules
-    require('snacks').setup {
-      picker = {
-        enabled = true,
-        sources = {
-          projects = {
-            -- Set this to the folder where you store your programming projects
-            dev = '~/projects',
+    -- 2. Setup snacks.nvim (safely wrapped for hot-reloading)
+    local ok, snacks = pcall(require, 'snacks')
+    if ok then
+      if not snacks.did_setup then
+        snacks.setup {
+          picker = {
+            enabled = true,
+            sources = {
+              projects = {
+                dev = '~/projects',
+              },
+            },
           },
-        },
-      },
-      explorer = {
-        enabled = true,
-        replace_netrw = true,
-      },
-    }
-
+          explorer = {
+            enabled = true,
+            replace_netrw = true,
+          },
+        }
+      end
+    end
     -- 3. Set the Keymaps (LazyVim equivalents)
     -- Global Pickers & Explorer
     vim.keymap.set('n', '<leader>e', function() Snacks.explorer() end, { desc = 'File Explorer' })
@@ -839,7 +844,17 @@ do
       -- clangd = {},
       -- gopls = {},
       -- pyright = {},
-      -- rust_analyzer = {},
+      rust_analyzer = {
+        settings = {
+          ['rust-analyzer'] = {
+            checkOnSave = true,
+
+            check = {
+              command = 'clippy',
+            },
+          },
+        },
+      },
       --
       -- Some languages (like typescript) have entire language plugins that can be useful:
       --    https://github.com/pmizio/typescript-tools.nvim
@@ -1111,11 +1126,11 @@ do
     --  Uncomment any of the lines below to enable them (you will need to restart nvim).
     --
     -- require 'kickstart.plugins.debug'
-    -- require 'kickstart.plugins.indent_line'
-    -- require 'kickstart.plugins.lint'
-    -- require 'kickstart.plugins.autopairs'
+    require 'kickstart.plugins.indent_line'
+    require 'kickstart.plugins.lint'
+    require 'kickstart.plugins.autopairs'
     -- require 'kickstart.plugins.neo-tree'
-    -- require 'kickstart.plugins.gitsigns' -- adds gitsigns recommended keymaps
+    require 'kickstart.plugins.gitsigns' -- adds gitsigns recommended keymaps
 
     -- NOTE: You can add your own plugins, configuration, etc from `lua/custom/plugins/*.lua`
     --
@@ -1126,3 +1141,17 @@ do
   -- The line beneath this is called `modeline`. See `:help modeline`
   -- vim: ts=2 sts=2 sw=2 et
 end
+
+-- Automatically change directory (cd) to the project root
+-- This ensures Neovim's active working directory, your Toggle Terminal,
+-- and shell commands are always running in the correct project folder.
+vim.api.nvim_create_autocmd({ 'BufEnter', 'VimEnter' }, {
+  callback = function()
+    -- Skip special buffers (like terminal buffers, help, etc.)
+    if vim.bo.buftype ~= '' then return end
+
+    -- Search upward for standard root project markers
+    local root = vim.fs.root(0, { '.git', 'Cargo.toml', 'package.json', 'Makefile' })
+    if root then vim.cmd.cd(root) end
+  end,
+})
