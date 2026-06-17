@@ -171,6 +171,39 @@ do
   -- instead raise a dialog asking if you wish to save the current file(s)
   -- See `:help 'confirm'`
   vim.o.confirm = true
+
+  local term_buf = nil
+  local term_win = nil
+
+  local function toggle_terminal()
+    -- 1. If the terminal window is open and valid, hide it (keeps the shell alive in the background)
+    if term_win and vim.api.nvim_win_is_valid(term_win) then
+      vim.api.nvim_win_hide(term_win)
+      term_win = nil
+      return
+    end
+
+    -- 2. If the terminal buffer exists and is valid, re-open it in a split
+    if term_buf and vim.api.nvim_buf_is_valid(term_buf) then
+      vim.cmd 'split | wincmd J | resize 15'
+      vim.api.nvim_win_set_buf(0, term_buf)
+      term_win = vim.api.nvim_get_current_win()
+      vim.cmd 'startinsert'
+    else
+      -- 3. Otherwise, create a brand-new terminal session
+      vim.cmd 'split | wincmd J | resize 15 | terminal'
+      term_buf = vim.api.nvim_get_current_buf()
+      term_win = vim.api.nvim_get_current_win()
+      vim.cmd 'startinsert'
+    end
+  end
+
+  -- Keymap to toggle from Normal Mode
+  vim.keymap.set('n', '<leader>t', toggle_terminal, { desc = '[T]oggle Terminal' })
+
+  -- Keymap to toggle directly from INSIDE the terminal without typing "Esc Esc" first
+  -- (We use Ctrl+T here because mapping Space+T in terminal mode would break typing spaces)
+  vim.keymap.set('t', '<C-t>', toggle_terminal, { desc = 'Toggle Terminal' })
 end
 
 -- ============================================================
@@ -377,7 +410,6 @@ do
     -- Document existing key chains
     spec = {
       { '<leader>s', group = '[S]earch', mode = { 'n', 'v' } },
-      { '<leader>t', group = '[T]oggle' },
       { '<leader>h', group = 'Git [H]unk', mode = { 'n', 'v' } }, -- Enable gitsigns recommended keymaps first
       { 'gr', group = 'LSP Actions', mode = { 'n' } },
     },
@@ -415,7 +447,7 @@ do
   -- Load the colorscheme here.
   -- Like many other themes, this one has different styles, and you could load
   -- any other, such as 'tokyonight-storm', 'tokyonight-moon', or 'tokyonight-day'.
-   vim.g.everforest_background = 'medium'
+  vim.g.everforest_background = 'medium'
 
   vim.cmd.colorscheme 'everforest'
   vim.o.termguicolors = true
@@ -716,7 +748,7 @@ do
         --
         -- This may be unwanted, since they displace some of your code
         if client and client:supports_method('textDocument/inlayHint', event.buf) then
-          map('<leader>th', function() vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled { bufnr = event.buf }) end, '[T]oggle Inlay [H]ints')
+          map('<leader>ih', function() vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled { bufnr = event.buf }) end, 'Toggle [I]nlay [H]ints')
         end
       end,
     })
