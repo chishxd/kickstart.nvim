@@ -198,6 +198,8 @@ do
     end
   end
 
+
+
   -- Keymap to toggle from Normal Mode
   vim.keymap.set('n', '<leader>t', toggle_terminal, { desc = '[T]oggle Terminal' })
 
@@ -400,8 +402,13 @@ do
       changedelete = { text = '~' }, ---@diagnostic disable-line: missing-fields
     },
   }
+  vim.pack.add { 'https://github.com/folke/lazydev.nvim' }
+  require('lazydev').setup {}
 
   vim.pack.add { gh 'wakatime/vim-wakatime' }
+
+  vim.pack.add { gh 'pocco81/auto-save.nvim'}
+  require('auto-save').setup{}
 
   -- Useful plugin to show you pending keybinds.
   vim.pack.add { gh 'folke/which-key.nvim' }
@@ -844,6 +851,12 @@ do
       -- clangd = {},
       -- gopls = {},
       -- pyright = {},
+      zls = {
+        settings = {
+          enable_build_on_save = true,
+          build_on_save_step = 'check',
+        },
+      },
       rust_analyzer = {
         settings = {
           ['rust-analyzer'] = {
