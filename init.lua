@@ -468,6 +468,19 @@ do
     gh 'nvim-telescope/telescope.nvim', -- dependency
   }
 
+  -- 1. Install and load the plugin via vim.pack
+  vim.pack.add { 'https://github.com/folke/flash.nvim' }
+
+  -- 2. Configure the plugin (opts = {})
+  local flash = require 'flash'
+  flash.setup {}
+
+  -- 3. Standard Neovim keymaps
+  vim.keymap.set({ 'n', 'x', 'o' }, 's', function() flash.jump() end, { desc = 'Flash' })
+  vim.keymap.set({ 'n', 'x', 'o' }, 'S', function() flash.treesitter() end, { desc = 'Flash Treesitter' })
+  vim.keymap.set('o', 'r', function() flash.remote() end, { desc = 'Remote Flash' })
+  vim.keymap.set({ 'o', 'x' }, 'R', function() flash.treesitter_search() end, { desc = 'Treesitter Search' })
+  vim.keymap.set('c', '<c-s>', function() flash.toggle() end, { desc = 'Toggle Flash Search' })
   -- 2. Configure Neogit
   require('neogit').setup {
     -- your custom configuration options go here
@@ -1187,28 +1200,23 @@ vim.api.nvim_create_autocmd({ 'BufEnter', 'VimEnter' }, {
   end,
 })
 
-
 -- Overriding vim.ui.open to make 'gx' open local file:// links directly inside Neovim
 local orig_open = vim.ui.open
 
 ---@diagnostic disable-next-line: duplicate-set-field
 vim.ui.open = function(path, opt)
-  if path:match('^file://') then
+  if path:match '^file://' then
     -- Clean up the file path prefix
     local clean_path = path:gsub('^file://', '')
-    
+
     -- Extract the file path and line number if present (e.g. #L488)
-    local file, line = clean_path:match('([^#]+)#L(%d+)')
-    if not file then
-      file = clean_path:match('[^#]+')
-    end
+    local file, line = clean_path:match '([^#]+)#L(%d+)'
+    if not file then file = clean_path:match '[^#]+' end
 
     if file then
       -- If we are currently focused inside a floating window, close it first
       local win = vim.api.nvim_get_current_win()
-      if vim.api.nvim_win_get_config(win).relative ~= '' then
-        vim.cmd 'close'
-      end
+      if vim.api.nvim_win_get_config(win).relative ~= '' then vim.cmd 'close' end
 
       -- Open the file directly in Neovim
       vim.cmd('edit ' .. file)
