@@ -172,6 +172,27 @@ do
   -- See `:help 'confirm'`
   vim.o.confirm = true
 
+  -- ============================================================
+  -- Auto-Reload Buffers on Disk Changes (Autoread)
+  -- ============================================================
+  -- Enable the global autoread option
+  vim.o.autoread = true
+
+  local autoread_group = vim.api.nvim_create_augroup('AutoreadEnable', { clear = true })
+
+  -- Trigger checktime to check for disk changes when:
+  --  - FocusGained: You switch back to your terminal/GUI window
+  --  - BufEnter: You switch to a different buffer inside Neovim
+  --  - CursorHold/CursorHoldI: Your cursor stands still for a moment
+  vim.api.nvim_create_autocmd({ 'FocusGained', 'BufEnter', 'CursorHold', 'CursorHoldI' }, {
+    group = autoread_group,
+    pattern = '*',
+    callback = function()
+      -- Only run checktime if we are in normal mode and not in a special buffer (like terminal)
+      if vim.fn.mode() ~= 'c' and vim.bo.buftype == '' then vim.cmd 'checktime' end
+    end,
+  })
+
   local term_buf = nil
   local term_win = nil
 
@@ -197,8 +218,6 @@ do
       vim.cmd 'startinsert'
     end
   end
-
-
 
   -- Keymap to toggle from Normal Mode
   vim.keymap.set('n', '<leader>t', toggle_terminal, { desc = '[T]oggle Terminal' })
@@ -288,9 +307,12 @@ do
     callback = function() vim.hl.on_yank() end,
   })
 
+  vim.keymap.set({ 'n', 'v', 'o' }, 'H', '^', { desc = 'Go to beginning of line' })
+  vim.keymap.set({ 'n', 'v', 'o' }, 'L', '$', { desc = 'Go to end of line' })
+
   -- Buffer navigation
-  vim.keymap.set('n', '<S-l>', '<cmd>bnext<CR>', { desc = 'Next buffer' })
-  vim.keymap.set('n', '<S-h>', '<cmd>bprev<CR>', { desc = 'Previous buffer' })
+  vim.keymap.set('n', '<M-l>', '<cmd>bnext<CR>', { desc = 'Next buffer' })
+  vim.keymap.set('n', '<M-h>', '<cmd>bprev<CR>', { desc = 'Previous buffer' })
   vim.keymap.set('n', '<leader>bd', '<cmd>bdelete<CR>', { desc = '[B]uffer [D]elete' })
   vim.keymap.set('n', '<leader>gg', '<cmd>Neogit<cr>', { desc = 'Show Neogit UI' })
 end
@@ -407,8 +429,8 @@ do
 
   vim.pack.add { gh 'wakatime/vim-wakatime' }
 
-  vim.pack.add { gh 'pocco81/auto-save.nvim'}
-  require('auto-save').setup{}
+  vim.pack.add { gh 'pocco81/auto-save.nvim' }
+  require('auto-save').setup {}
 
   -- Useful plugin to show you pending keybinds.
   vim.pack.add { gh 'folke/which-key.nvim' }
@@ -474,6 +496,33 @@ do
     MiniIcons.mock_nvim_web_devicons()
   end
 
+  -- Enable a slim, minimalist tabline for buffer tabs
+  require('mini.tabline').setup {
+    show_icons = false, -- Turn off file icons
+    format = function(buf_id, label)
+      -- 1. Check for unsaved changes in Neovim
+      local is_modified = vim.bo[buf_id].modified
+
+      -- 2. Check for changes since last Git commit (utilizing gitsigns status)
+      local gs = vim.b[buf_id].gitsigns_status_dict
+      local has_git_changes = gs and ((gs.added or 0) > 0 or (gs.changed or 0) > 0 or (gs.removed or 0) > 0)
+
+      -- Define a slim indicator suffix
+      local indicator = ''
+      if is_modified then
+        indicator = '•' -- Represents unsaved local changes
+      elseif has_git_changes then
+        indicator = '~' -- Represents uncommitted Git changes
+      end
+
+      -- Format the tab with clean, single-space padding
+      if indicator ~= '' then
+        return string.format(' %s %s ', label, indicator)
+      else
+        return string.format(' %s ', label)
+      end
+    end,
+  }
   -- Better Around/Inside textobjects
   --
   -- Examples:
@@ -512,6 +561,7 @@ do
     options = {
       theme = 'auto', -- This automatically matches the statusline to your active colorscheme
       icons_enabled = vim.g.have_nerd_font,
+      global_statusline = true,
       component_separators = { left = '', right = '' },
       section_separators = { left = '', right = '' },
     },
@@ -792,6 +842,9 @@ do
           vim.keymap.set(mode, keys, func, { buffer = event.buf, desc = 'LSP: ' .. desc })
         end
 
+        -- Map "gd" to jump directly to the definition under your cursor
+        map('gd', vim.lsp.buf.definition, '[G]oto [D]efinition')
+
         -- Rename the variable under your cursor.
         --  Most Language Servers support renaming across files, etc.
         map('grn', vim.lsp.buf.rename, '[R]e[n]ame')
@@ -843,6 +896,20 @@ do
       end,
     })
 
+    local orig_hover = vim.lsp.buf.hover
+    vim.lsp.buf.hover = function(opts)
+      opts = opts or {}
+      opts.border = opts.border or 'rounded'
+      return orig_hover(opts)
+    end
+
+    local orig_signature_help = vim.lsp.buf.signature_help
+    vim.lsp.buf.signature_help = function(opts)
+      opts = opts or {}
+      opts.border = opts.border or 'rounded'
+      return orig_signature_help(opts)
+    end
+
     -- Enable the following language servers
     --  Feel free to add/remove any LSPs that you want here. They will automatically be installed.
     --  See `:help lsp-config` for information about keys and how to configure
@@ -851,23 +918,8 @@ do
       -- clangd = {},
       -- gopls = {},
       -- pyright = {},
-      zls = {
-        settings = {
-          enable_build_on_save = true,
-          build_on_save_step = 'check',
-        },
-      },
-      rust_analyzer = {
-        settings = {
-          ['rust-analyzer'] = {
-            checkOnSave = true,
-
-            check = {
-              command = 'clippy',
-            },
-          },
-        },
-      },
+      zls = {},
+      rust_analyzer = {},
       --
       -- Some languages (like typescript) have entire language plugins that can be useful:
       --    https://github.com/pmizio/typescript-tools.nvim
@@ -878,38 +930,7 @@ do
       stylua = {}, -- Used to format Lua code
 
       -- Special Lua Config, as recommended by neovim help docs
-      lua_ls = {
-        on_init = function(client)
-          client.server_capabilities.documentFormattingProvider = false -- Disable formatting (formatting is done by stylua)
-
-          if client.workspace_folders then
-            local path = client.workspace_folders[1].name
-            if path ~= vim.fn.stdpath 'config' and (vim.uv.fs_stat(path .. '/.luarc.json') or vim.uv.fs_stat(path .. '/.luarc.jsonc')) then return end
-          end
-
-          client.config.settings.Lua = vim.tbl_deep_extend('force', client.config.settings.Lua, {
-            runtime = {
-              version = 'LuaJIT',
-              path = { 'lua/?.lua', 'lua/?/init.lua' },
-            },
-            workspace = {
-              checkThirdParty = false,
-              -- NOTE: this is a lot slower and will cause issues when working on your own configuration.
-              --  See https://github.com/neovim/nvim-lspconfig/issues/3189
-              library = vim.tbl_extend('force', vim.api.nvim_get_runtime_file('', true), {
-                '${3rd}/luv/library',
-                '${3rd}/busted/library',
-              }),
-            },
-          })
-        end,
-        ---@type lspconfig.settings.lua_ls
-        settings = {
-          Lua = {
-            format = { enable = false }, -- Disable formatting (formatting is done by stylua)
-          },
-        },
-      },
+      lua_ls = {},
     }
 
     vim.pack.add {
@@ -1003,43 +1024,29 @@ do
     vim.pack.add { { src = gh 'saghen/blink.cmp', version = vim.version.range '1.*' } }
     require('blink.cmp').setup {
       keymap = {
-        -- 'default' (recommended) for mappings similar to built-in completions
-        --   <c-y> to accept ([y]es) the completion.
-        --    This will auto-import if your LSP supports it.
-        --    This will expand snippets if the LSP sent a snippet.
-        -- 'super-tab' for tab to accept
-        -- 'enter' for enter to accept
-        -- 'none' for no mappings
-        --
-        -- For an understanding of why the 'default' preset is recommended,
-        -- you will need to read `:help ins-completion`
-        --
-        -- No, but seriously. Please read `:help ins-completion`, it is really good!
-        --
-        -- All presets have the following mappings:
-        -- <tab>/<s-tab>: move to right/left of your snippet expansion
-        -- <c-space>: Open menu or open docs if already open
-        -- <c-n>/<c-p> or <up>/<down>: Select next/previous item
-        -- <c-e>: Hide menu
-        -- <c-k>: Toggle signature help
-        --
-        -- See `:help blink-cmp-config-keymap` for defining your own keymap
         preset = 'enter',
-
-        -- For more advanced Luasnip keymaps (e.g. selecting choice nodes, expansion) see:
-        --    https://github.com/L3MON4D3/LuaSnip?tab=readme-ov-file#keymaps
+        -- You can define explicit keys to scroll the documentation here if needed,
+        -- though `<C-b>` and `<C-f>` are mapped by default in the 'enter' preset.
       },
 
       appearance = {
-        -- 'mono' (default) for 'Nerd Font Mono' or 'normal' for 'Nerd Font'
-        -- Adjusts spacing to ensure icons are aligned
         nerd_font_variant = 'mono',
       },
 
       completion = {
-        -- By default, you may press `<c-space>` to show the documentation.
-        -- Optionally, set `auto_show = true` to show the documentation after a delay.
-        documentation = { auto_show = false, auto_show_delay_ms = 500 },
+        -- 1. Add rounded border to the autocomplete suggestions menu
+        menu = {
+          border = 'rounded',
+        },
+
+        -- 2. Configure documentation popup
+        documentation = {
+          auto_show = true, -- Automatically show documentation next to suggestions
+          auto_show_delay_ms = 200, -- Fast 200ms delay for a snappy feel
+          window = {
+            border = 'rounded', -- Add rounded border to documentation
+          },
+        },
       },
 
       sources = {
@@ -1048,17 +1055,15 @@ do
 
       snippets = { preset = 'luasnip' },
 
-      -- Blink.cmp includes an optional, recommended rust fuzzy matcher,
-      -- which automatically downloads a prebuilt binary when enabled.
-      --
-      -- By default, we use the Lua implementation instead, but you may enable
-      -- the rust implementation via `'prefer_rust_with_warning'`
-      --
-      -- See `:help blink-cmp-config-fuzzy` for more information
       fuzzy = { implementation = 'lua' },
 
-      -- Shows a signature help window while you type arguments for a function
-      signature = { enabled = true },
+      -- 3. Enable rounded borders for function argument signature help
+      signature = {
+        enabled = true,
+        window = {
+          border = 'rounded',
+        },
+      },
     }
   end
 
@@ -1155,16 +1160,70 @@ do
   -- vim: ts=2 sts=2 sw=2 et
 end
 
+if vim.fn.argc() > 0 then
+  local first_arg = vim.fn.argv(0)
+  if first_arg ~= '' and vim.fn.isdirectory(first_arg) == 1 then vim.cmd.cd(first_arg) end
+end
+
 -- Automatically change directory (cd) to the project root
 -- This ensures Neovim's active working directory, your Toggle Terminal,
 -- and shell commands are always running in the correct project folder.
 vim.api.nvim_create_autocmd({ 'BufEnter', 'VimEnter' }, {
   callback = function()
-    -- Skip special buffers (like terminal buffers, help, etc.)
+    -- Skip special non-directory buffers (like terminal buffers, help, etc.)
     if vim.bo.buftype ~= '' then return end
 
-    -- Search upward for standard root project markers
-    local root = vim.fs.root(0, { '.git', 'Cargo.toml', 'package.json', 'Makefile' })
+    -- Search upward for standard root project markers (now including Zig!)
+    local root = vim.fs.root(0, {
+      '.git',
+      'build.zig',
+      'build.zig.zon',
+      'Cargo.toml',
+      'package.json',
+      'Makefile',
+    })
+
     if root then vim.cmd.cd(root) end
   end,
 })
+
+
+-- Overriding vim.ui.open to make 'gx' open local file:// links directly inside Neovim
+local orig_open = vim.ui.open
+
+---@diagnostic disable-next-line: duplicate-set-field
+vim.ui.open = function(path, opt)
+  if path:match('^file://') then
+    -- Clean up the file path prefix
+    local clean_path = path:gsub('^file://', '')
+    
+    -- Extract the file path and line number if present (e.g. #L488)
+    local file, line = clean_path:match('([^#]+)#L(%d+)')
+    if not file then
+      file = clean_path:match('[^#]+')
+    end
+
+    if file then
+      -- If we are currently focused inside a floating window, close it first
+      local win = vim.api.nvim_get_current_win()
+      if vim.api.nvim_win_get_config(win).relative ~= '' then
+        vim.cmd 'close'
+      end
+
+      -- Open the file directly in Neovim
+      vim.cmd('edit ' .. file)
+      if line then
+        vim.cmd(line) -- Jump to the exact line number
+      end
+
+      -- Return a dummy system object to satisfy Neovim's defaults.lua wait() checks
+      return {
+        wait = function() return { code = 0 } end,
+        kill = function() end,
+      }
+    end
+  end
+
+  -- Fall back to default behavior for web links (http://, https://, etc.)
+  return orig_open(path, opt)
+end
