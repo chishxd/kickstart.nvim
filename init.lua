@@ -98,9 +98,13 @@ do
   vim.g.mapleader = ' '
   vim.g.maplocalleader = ' '
 
+  vim.opt.laststatus = 3
   -- Set to true if you have a Nerd Font installed and selected in the terminal
   vim.g.have_nerd_font = true
 
+  vim.opt.tabstop = 4
+  vim.opt.shiftwidth = 4
+  vim.opt.expandtab = true
   -- [[ Setting options ]]
   --  See `:help vim.o`
   -- NOTE: You can change these options as you wish!
@@ -427,6 +431,11 @@ do
   vim.pack.add { 'https://github.com/folke/lazydev.nvim' }
   require('lazydev').setup {}
 
+  vim.pack.add {
+    gh 'ray-x/guihua.lua',
+    gh 'ray-x/go.nvim',
+  }
+
   vim.pack.add { gh 'wakatime/vim-wakatime' }
 
   vim.pack.add { gh 'pocco81/auto-save.nvim' }
@@ -441,6 +450,11 @@ do
     -- Document existing key chains
     spec = {
       { '<leader>s', group = '[S]earch', mode = { 'n', 'v' } },
+      { '<leader>f', group = '[F]ind', mode = { 'n' } },
+      { '<leader>g', group = '[G]it', mode = { 'n' } },
+      { '<leader>t', group = '[T]oggle', mode = { 'n' } },
+      { '<leader>b', group = '[B]uffer', mode = { 'n' } },
+      { '<leader>c', group = '[C]all Hierarchy', mode = { 'n' } },
       { '<leader>h', group = 'Git [H]unk', mode = { 'n', 'v' } }, -- Enable gitsigns recommended keymaps first
       { 'gr', group = 'LSP Actions', mode = { 'n' } },
     },
@@ -456,11 +470,7 @@ do
 
   vim.pack.add { 'https://github.com/neanias/everforest-nvim' }
   ---@diagnostic disable-next-line: missing-fields
-  require('tokyonight').setup {
-    styles = {
-      comments = { italic = false }, -- Disable italics in comments
-    },
-  }
+  require('tokyonight').setup {}
 
   vim.pack.add {
     gh 'NeogitOrg/neogit',
@@ -494,6 +504,7 @@ do
   vim.g.everforest_background = 'medium'
 
   vim.cmd.colorscheme 'tokyonight'
+  -- Match kitty background so window padding blends seamlessly
   -- Highlight todo, notes, etc in comments
   vim.pack.add { gh 'folke/todo-comments.nvim' }
   require('todo-comments').setup { signs = false }
@@ -599,11 +610,43 @@ do
     if ok then
       if not snacks.did_setup then
         snacks.setup {
+          notifier = { enabled = true },
           picker = {
             enabled = true,
+            layout = {
+              cycle = true,
+              preset = function()
+                return vim.o.columns >= 120 and 'default' or 'vertical'
+              end,
+            },
+            matcher = {
+              fuzzy = true,
+              smartcase = true,
+              ignorecase = true,
+              filename_bonus = true,
+              file_pos = true,
+            },
             sources = {
               projects = {
                 dev = '~/projects',
+              },
+              grep = {
+                exclude = {
+                  'build/',
+                  'cmake-build*/',
+                  'target/',
+                  '.zig-cache/',
+                  'node_modules/',
+                },
+              },
+              files = {
+                exclude = {
+                  'build/',
+                  'cmake-build*/',
+                  'target/',
+                  '.zig-cache/',
+                  'node_modules/',
+                },
               },
             },
           },
@@ -635,15 +678,28 @@ do
     vim.keymap.set('n', '<leader>sh', function() Snacks.picker.help() end, { desc = 'Help Pages' })
     vim.keymap.set('n', '<leader>sR', function() Snacks.picker.resume() end, { desc = 'Resume Last Search' })
 
-    -- Diagnostics & LSP Symbols
+    -- Language-Specific Grep
+    vim.keymap.set('n', '<leader>sr', function() Snacks.picker.grep({ ft = 'rust', exclude = { 'target/' } }) end, { desc = 'Grep Rust' })
+    vim.keymap.set('n', '<leader>sz', function() Snacks.picker.grep({ ft = 'zig', exclude = { '.zig-cache/' } }) end, { desc = 'Grep Zig' })
+    vim.keymap.set('n', '<leader>sc', function() Snacks.picker.grep({ glob = { '*.cpp', '*.h', '*.c', '*.hpp' }, exclude = { 'build/', 'cmake-build*/' } }) end, { desc = 'Grep C/C++' })
+
+    -- Treesitter Symbols
+    vim.keymap.set('n', '<leader>st', function() Snacks.picker.treesitter() end, { desc = 'Treesitter Symbols' })
+
+    -- Diagnostics
     vim.keymap.set('n', '<leader>sd', function() Snacks.picker.diagnostics { filter = { bufnr = 0 } } end, { desc = 'Document Diagnostics' })
     vim.keymap.set('n', '<leader>sD', function() Snacks.picker.diagnostics() end, { desc = 'Workspace Diagnostics' })
-    vim.keymap.set('n', '<leader>ss', function() Snacks.picker.lsp_symbols() end, { desc = 'Goto Document Symbol' })
-    vim.keymap.set('n', '<leader>sS', function() Snacks.picker.lsp_workspace_symbols() end, { desc = 'Goto Workspace Symbol' })
 
     -- Git Pickers
     vim.keymap.set('n', '<leader>gs', function() Snacks.picker.git_status() end, { desc = 'Git Status' })
     vim.keymap.set('n', '<leader>gc', function() Snacks.picker.git_log() end, { desc = 'Git Log' })
+  end
+
+  do -- [[ Snacks Toggles ]] --
+    Snacks.toggle.option('number', { name = 'Line Numbers' }):map '<leader>tn'
+    Snacks.toggle.option('relativenumber', { name = 'Relative Numbers' }):map '<leader>tr'
+    Snacks.toggle.option('wrap', { name = 'Word Wrap' }):map '<leader>tw'
+    Snacks.toggle.option('spell', { name = 'Spell Checking' }):map '<leader>ts'
   end
   -- do
   --   -- [[ Fuzzy Finder (files, lsp, etc) ]]
@@ -856,7 +912,7 @@ do
         end
 
         -- Map "gd" to jump directly to the definition under your cursor
-        map('gd', vim.lsp.buf.definition, '[G]oto [D]efinition')
+        map('gd', function() Snacks.picker.lsp_definitions() end, '[G]oto [D]efinition')
 
         -- Rename the variable under your cursor.
         --  Most Language Servers support renaming across files, etc.
@@ -868,7 +924,24 @@ do
 
         -- WARN: This is not Goto Definition, this is Goto Declaration.
         --  For example, in C this would take you to the header.
-        map('grD', vim.lsp.buf.declaration, '[G]oto [D]eclaration')
+        map('grD', function() Snacks.picker.lsp_declarations() end, '[G]oto [D]eclaration')
+
+        -- Find references to the symbol under your cursor
+        map('gr', function() Snacks.picker.lsp_references() end, '[G]oto [R]eferences')
+
+        -- Find implementations of the symbol under your cursor
+        map('gI', function() Snacks.picker.lsp_implementations() end, '[G]oto [I]mplementation')
+
+        -- Find type definitions
+        map('gy', function() Snacks.picker.lsp_type_definitions() end, '[G]oto T[y]pe Definition')
+
+        -- Document and workspace symbols
+        map('<leader>so', function() Snacks.picker.lsp_symbols() end, '[S]ymbol [O]verview')
+        map('<leader>sO', function() Snacks.picker.lsp_workspace_symbols() end, '[S]ymbol [O]verview (Workspace)')
+
+        -- Call hierarchy
+        map('<leader>ci', function() Snacks.picker.lsp_incoming_calls() end, '[C]all [I]ncoming')
+        map('<leader>co', function() Snacks.picker.lsp_outgoing_calls() end, '[C]all [O]utgoing')
 
         -- The following two autocommands are used to highlight references of the
         -- word under your cursor when your cursor rests there for a little while.
@@ -928,8 +1001,8 @@ do
     --  See `:help lsp-config` for information about keys and how to configure
     ---@type table<string, vim.lsp.Config>
     local servers = {
-      -- clangd = {},
-      -- gopls = {},
+      clangd = {},
+      gopls = {},
       -- pyright = {},
       zls = {},
       rust_analyzer = {},
@@ -1026,6 +1099,12 @@ do
     vim.pack.add { { src = gh 'L3MON4D3/LuaSnip', version = vim.version.range '2.*' } }
     require('luasnip').setup {}
 
+    vim.pack.add {
+      { src = 'https://github.com/pmizio/typescript-tools.nvim' },
+      { src = 'https://github.com/nvim-lua/plenary.nvim' },
+    }
+
+    require('typescript-tools').setup {}
     -- `friendly-snippets` contains a variety of premade snippets.
     --    See the README about individual language/framework/plugin snippets:
     --    https://github.com/rafamadriz/friendly-snippets
